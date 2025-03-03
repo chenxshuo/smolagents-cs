@@ -1,3 +1,5 @@
+*api_key*
+*.python-version
 # Logging
 logs
 tmp
