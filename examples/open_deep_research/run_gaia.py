@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -28,7 +27,6 @@ from scripts.text_web_browser import (
     VisitTool,
 )
 from scripts.visual_qa import visualizer
-from tqdm import tqdm
 
 from smolagents import (
     CodeAgent,
@@ -282,16 +280,19 @@ def main():
     answers_file = f"output/{SET}/{args.run_name}.jsonl"
     tasks_to_run = get_examples_to_answer(answers_file, eval_ds)
 
-    with ThreadPoolExecutor(max_workers=args.concurrency) as exe:
-        futures = [
-            exe.submit(answer_single_question, example, args.model_id, answers_file, visualizer)
-            for example in tasks_to_run
-        ]
-        for f in tqdm(as_completed(futures), total=len(tasks_to_run), desc="Processing tasks"):
-            f.result()
+    # with ThreadPoolExecutor(max_workers=args.concurrency) as exe:
+    #     futures = [
+    #         exe.submit(answer_single_question, example, args.model_id, answers_file, visualizer)
+    #         for example in tasks_to_run
+    #     ]
+    #     for f in tqdm(as_completed(futures), total=len(tasks_to_run), desc="Processing tasks"):
+    #         f.result()
 
-    # for example in tasks_to_run:
-    #     answer_single_question(example, args.model_id, answers_file, visualizer)
+    for example in tasks_to_run:
+        import ipdb; ipdb.set_trace()
+        print(example)
+
+        # answer_single_question(example, args.model_id, answers_file, visualizer)
     print("All tasks processed.")
 
 
