@@ -28,9 +28,10 @@ which pip
 which python
 pip install -r examples/open_deep_research/requirements.txt
 pip install -e '.[dev]'
-
+pip install opentelemetry-sdk opentelemetry-exporter-otlp openinference-instrumentation-smolagents
 
 # API:
-SERPAPI_API_KEY: https://serpapi.com/manage-api-key
-SERPER_API_KEY: https://serper.dev/api-key
-openai: https://platform.openai.com/docs/guides/prompt-engineering
+#SERPAPI_API_KEY: https://serpapi.com/manage-api-key
+#SERPER_API_KEY: https://serper.dev/api-key
+#openai: https://platform.openai.com/docs/guides/prompt-engineering
+
