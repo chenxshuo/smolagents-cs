@@ -1,7 +1,6 @@
 import argparse
 import os
 import threading
-import api_key_setup
 
 from dotenv import load_dotenv
 from huggingface_hub import login
@@ -20,7 +19,7 @@ from scripts.visual_qa import visualizer
 from smolagents import (
     CodeAgent,
     GoogleSearchTool,
-    # HfApiModel,
+    HfApiModel,
     LiteLLMModel,
     ToolCallingAgent,
 )
@@ -64,6 +63,7 @@ def parse_args():
         "question", type=str, help="for example: 'How many studio albums did Mercedes Sosa release before 2007?'"
     )
     parser.add_argument("--model-id", type=str, default="o1")
+    parser.add_argument("--provider", type=str, default="hf")
     return parser.parse_args()
 
 
@@ -81,18 +81,23 @@ BROWSER_CONFIG = {
     "serpapi_key": os.getenv("SERPAPI_API_KEY"),
 }
 
+
 os.makedirs(f"./{BROWSER_CONFIG['downloads_folder']}", exist_ok=True)
 
 
-def create_agent(model_id="o1"):
+def create_agent(model_id="o1", provider="hf"):
     model_params = {
         "model_id": model_id,
         "custom_role_conversions": custom_role_conversions,
         "max_completion_tokens": 8192,
     }
-    if model_id == "o1":
-        model_params["reasoning_effort"] = "high"
-    model = LiteLLMModel(**model_params)
+
+    if provider == "litellm":
+        if model_id == "o1":
+            model_params["reasoning_effort"] = "high"
+        model = LiteLLMModel(**model_params)
+    elif provider == "hf":
+        model = HfApiModel(model_id)
 
     text_limit = 100000
     browser = SimpleTextBrowser(**BROWSER_CONFIG)
@@ -141,12 +146,12 @@ def create_agent(model_id="o1"):
 def main():
     args = parse_args()
 
-    agent = create_agent(model_id=args.model_id)
+    agent = create_agent(model_id=args.model_id, provider=args.provider)
 
     answer = agent.run(args.question)
 
     print(f"Got this answer: {answer}")
 
-
 if __name__ == "__main__":
     main()
+
