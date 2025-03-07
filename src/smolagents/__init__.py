@@ -28,3 +28,4 @@ from .remote_executors import *
 from .tools import *
 from .utils import *
 from .cli import *
+from .cs_deep_research import api_key_setup
