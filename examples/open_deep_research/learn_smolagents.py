@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """"""
 
-from smolagents import CodeAgent, DuckDuckGoSearchTool, HfApiModel
+from smolagents import CodeAgent, DuckDuckGoSearchTool, HfApiModel, OpenAIServerModel
+from smolagents import api_key_setup
 import logging
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='[%(levelname)s:%(asctime)s:%(name)s:%(filename)s:%(lineno)d]\t %(message)s',
 )
 
@@ -39,7 +40,13 @@ def two_agents():
 
 def langfuse_inspect():
     from smolagents import CodeAgent, HfApiModel, DuckDuckGoSearchTool
-    model = HfApiModel()
+    # model = HfApiModel()
+    model = OpenAIServerModel(
+        # model_id="Qwen/QwQ-32B",
+        model_id="Qwen/Qwen2.5-72B-Instruct",
+        api_base="http://localhost:8000/v1",
+        api_key="token-abc123",
+    )
     web_agent = CodeAgent(
         tools=[DuckDuckGoSearchTool()],
         model=model,
@@ -93,6 +100,6 @@ def try_gaia():
 if __name__ == "__main__":
     # try_duckduckgo()
     # two_agents()
-    # langfuse_inspect()
+    langfuse_inspect()
 
-    try_gaia()
+    # try_gaia()

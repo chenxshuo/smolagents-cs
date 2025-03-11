@@ -21,7 +21,7 @@ from smolagents import (
     GoogleSearchTool,
     HfApiModel,
     LiteLLMModel,
-    ToolCallingAgent,
+    ToolCallingAgent, OpenAIServerModel,
 )
 
 
@@ -98,6 +98,14 @@ def create_agent(model_id="o1", provider="hf"):
         model = LiteLLMModel(**model_params)
     elif provider == "hf":
         model = HfApiModel(model_id)
+    elif provider == "localhost":
+        model = OpenAIServerModel(
+            model_id=model_id,
+            api_base="http://localhost:8000/v1",
+            api_key="token-abc123",
+        )
+    else:
+        raise NotImplementedError(f"provider {provider} not implemented")
 
     text_limit = 100000
     browser = SimpleTextBrowser(**BROWSER_CONFIG)

@@ -1018,6 +1018,102 @@ class AzureOpenAIServerModel(OpenAIServerModel):
         self.client = openai.AzureOpenAI(api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint)
 
 
+class VLLMModel(Model):
+
+    def __init__(
+            self,
+            model_id: str,
+            sampling_kwargs: dict = None,
+            init_kwargs: dict = None,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+        default_model_id = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
+        if model_id is None:
+            model_id = default_model_id
+            logger.warning(f"`model_id`not provided, using this default model: '{model_id}'")
+        self.model_id = model_id
+        from vllm import LLM, SamplingParams
+        if not init_kwargs:
+            init_kwargs = {}
+        if not sampling_kwargs:
+            sampling_kwargs = {}
+        default_max_tokens = 5000
+        max_new_tokens = sampling_kwargs.get("max_new_tokens") or sampling_kwargs.get("max_tokens")
+        if not max_new_tokens:
+            kwargs["max_new_tokens"] = default_max_tokens
+            logger.warning(
+                f"`max_new_tokens` not provided, using this default value for `max_new_tokens`: {default_max_tokens}"
+            )
+        self.kwargs = kwargs
+        self.sampling_params = SamplingParams(**sampling_kwargs)
+        self.model = LLM(model=model_id, **init_kwargs)
+        self._is_vlm = False
+
+    def __call__(
+            self,
+            messages: List[Dict[str, str]],
+            stop_sequences: Optional[List[str]] = None,
+            grammar: Optional[str] = None,
+            tools_to_call_from: Optional[List[Tool]] = None,
+            images: Optional[List[Image.Image]] = None,
+            **kwargs,
+    ) -> ChatMessage:
+        max_new_tokens = (
+                kwargs.get("max_new_tokens")
+                or kwargs.get("max_tokens")
+                or self.kwargs.get("max_new_tokens")
+                or self.kwargs.get("max_tokens")
+        )
+        completion_kwargs = {}
+        if max_new_tokens:
+            completion_kwargs["max_new_tokens"] = max_new_tokens
+        import torch
+
+        out = self.model.chat(messages,
+                              sampling_params=self.sampling_params,
+                              use_tqdm=False)
+        output = out[-1].outputs[-1].text
+        if stop_sequences is not None:
+            output = remove_stop_sequences(output, stop_sequences)
+        raw = {'output': torch.tensor(out[-1].outputs[-1].token_ids),
+               "completion_kwargs": completion_kwargs}
+        if tools_to_call_from is None:
+            return ChatMessage(
+                role="assistant",
+                content=output,
+                raw=raw,
+            )
+        else:
+            if "Action:" in output:
+                output = output.split("Action:", 1)[1].strip()
+            try:
+                start_index = output.index("{")
+                end_index = output.rindex("}")
+                output = output[start_index: end_index + 1]
+            except Exception as e:
+                raise Exception("No json blob found in output!") from e
+
+            try:
+                parsed_output = json.loads(output)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Tool call '{output}' has an invalid JSON structure: {e}")
+            tool_name = parsed_output.get("name")
+            tool_arguments = parsed_output.get("arguments")
+            return ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    ChatMessageToolCall(
+                        id="".join(random.choices("0123456789", k=5)),
+                        type="function",
+                        function=ChatMessageToolCallDefinition(name=tool_name, arguments=tool_arguments),
+                    )
+                ],
+                raw=raw,
+            )
+
+
 __all__ = [
     "MessageRole",
     "tool_role_conversions",
@@ -1027,6 +1123,7 @@ __all__ = [
     "TransformersModel",
     "HfApiModel",
     "LiteLLMModel",
+    "VLLMModel",
     "OpenAIServerModel",
     "AzureOpenAIServerModel",
     "ChatMessage",
