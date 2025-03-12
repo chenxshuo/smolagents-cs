@@ -11,7 +11,8 @@ from urllib.parse import unquote, urljoin, urlparse
 
 import pathvalidate
 import requests
-from serpapi import GoogleSearch
+# from serpapi import GoogleSearch
+from serpapi.google_search import GoogleSearch
 
 from smolagents import Tool
 

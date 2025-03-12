@@ -32,6 +32,7 @@ from smolagents import (
     CodeAgent,
     # HfApiModel,
     LiteLLMModel,
+    OpenAIServerModel,
     Model,
     ToolCallingAgent,
 )
@@ -73,6 +74,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--model-id", type=str, default="o1")
+    parser.add_argument("--provider", type=str, default="localhost")
     parser.add_argument("--run-name", type=str, required=True)
     return parser.parse_args()
 
@@ -95,7 +97,8 @@ eval_ds = eval_ds.rename_columns({"Question": "question", "Final answer": "true_
 
 def preprocess_file_paths(row):
     if len(row["file_name"]) > 0:
-        row["file_name"] = f"data/gaia/{SET}/" + row["file_name"]
+        # row["file_name"] = f"data/gaia/{SET}/" + row["file_name"]
+        row["file_name"] = f"/dss/dssmcmlfs01/pn39qo/pn39qo-dss-0000/.cache/huggingface/hub/datasets--gaia-benchmark--GAIA/snapshots/897f2dfbb5c952b5c3c1509e648381f9c7b70316/2023/{SET}/" + row["file_name"]
     return row
 
 
@@ -175,21 +178,34 @@ def append_answer(entry: dict, jsonl_file: str) -> None:
     print("Answer exported to file:", jsonl_file.resolve())
 
 
-def answer_single_question(example, model_id, answers_file, visual_inspection_tool):
+def answer_single_question(example, model_id, provider, answers_file, visual_inspection_tool):
     model_params = {
         "model_id": model_id,
         "custom_role_conversions": custom_role_conversions,
         "max_completion_tokens": 8192,
     }
-    if model_id == "o1":
-        model_params["reasoning_effort"] = "high"
-    model = LiteLLMModel(**model_params)
-    # model = HfApiModel("Qwen/Qwen2.5-72B-Instruct", provider="together")
-    #     "https://lnxyuvj02bpe6mam.us-east-1.aws.endpoints.huggingface.cloud",
-    #     custom_role_conversions=custom_role_conversions,
-    #     # provider="sambanova",
-    #     max_tokens=8096,
-    # )
+
+    if provider == "litellm":
+        if model_id == "o1":
+            model_params["reasoning_effort"] = "high"
+        model = LiteLLMModel(**model_params)
+    elif provider == "hf":
+        ...
+        # model = HfApiModel("Qwen/Qwen2.5-72B-Instruct", provider="together")
+        #     "https://lnxyuvj02bpe6mam.us-east-1.aws.endpoints.huggingface.cloud",
+        #     custom_role_conversions=custom_role_conversions,
+        #     # provider="sambanova",
+        #     max_tokens=8096,
+        # )
+    elif provider == "localhost":
+        model = OpenAIServerModel(
+            model_id=model_id,
+            api_base="http://localhost:8000/v1",
+            api_key="token-abc123",
+        )
+    else:
+        raise NotImplementedError(f"provider {provider} not implemented")
+
     document_inspection_tool = TextInspectorTool(model, 100000)
 
     agent = create_agent_hierarchy(model)
@@ -248,6 +264,7 @@ Here is the task:
         "question": example["question"],
         "augmented_question": augmented_question,
         "prediction": output,
+        "true_answer": example["true_answer"],
         "intermediate_steps": intermediate_steps,
         "parsing_error": parsing_error,
         "iteration_limit_exceeded": iteration_limit_exceeded,
@@ -256,7 +273,6 @@ Here is the task:
         "end_time": end_time,
         "task": example["task"],
         "task_id": example["task_id"],
-        "true_answer": example["true_answer"],
     }
     append_answer(annotated_example, answers_file)
 
@@ -289,10 +305,14 @@ def main():
     #         f.result()
 
     for example in tasks_to_run:
-        import ipdb; ipdb.set_trace()
-        print(example)
+        # import ipdb; ipdb.set_trace()
 
-        # answer_single_question(example, args.model_id, answers_file, visualizer)
+        if int(example["task"]) > 1:
+            # only try easy one for now
+            continue
+        # import ipdb; ipdb.set_trace()
+        answer_single_question(example, args.model_id, args.provider, answers_file, visualizer)
+        # break # for testing
     print("All tasks processed.")
 
 
