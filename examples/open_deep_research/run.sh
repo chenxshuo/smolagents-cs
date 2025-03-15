@@ -6,3 +6,6 @@ python run.py --model-id "Qwen/QwQ-32B" --provider="localhost" question="What is
 
 python run_gaia.py --run-name="gaia-level1-qwq-32b" --model-id "Qwen/QwQ-32B" --provider="localhost"
 python run_gaia.py --run-name="gaia-level-1" --model-id "Qwen/Qwen2.5-72B-Instruct" --provider="localhost"
+
+python run_gaia.py --run-name="gaia-level-1-ds-llama70b" --model-id "deepseek-ai/DeepSeek-R1-Distill-Llama-70B" --provider="localhost"
+python run_gaia.py --run-name="gaia-level-1-ds-qwen32b" --model-id "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B" --provider="localhost"
