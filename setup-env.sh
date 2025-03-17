@@ -41,3 +41,11 @@ pip install opentelemetry-sdk opentelemetry-exporter-otlp openinference-instrume
 # VLLM
 # VLLM needs python >= 3.9 < 3.13
 pip install vllm
+
+
+# install cs-deep-research
+cd cs-deep-research
+pip install -e .
+
+pip install pre-commit
+pre-commit install

@@ -1,4 +1,5 @@
 *api_key*
+venv*
 *.python-version
 # Logging
 logs

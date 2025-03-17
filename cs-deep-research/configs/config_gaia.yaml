@@ -1,0 +1,65 @@
+defaults:
+  - override hydra/job_logging: custom
+  - override hydra/hydra_logging: colorlog
+  - _self_
+
+hydra:
+  run:
+    dir: ./outputs/${dataset.name}/level-${dataset.level}/${llm_model.model_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}-${generate_job_id:}
+
+  job_logging:
+    handlers:
+      file:
+        filename: ${hydra.run.dir}/log.log
+
+concurrency:
+  mode: linear # linear, parallel
+  max_workers: 4 # if mode is parallel
+
+seed: 42
+
+debug:
+  enable: False
+  max_tasks: 2
+
+llm_model:
+  model_id: Qwen/QwQ-32B
+  model_name: QwQ-32B
+  provider: localhost
+  localhost:
+    api_base: "http://localhost:8000/v1"
+    api_key: "token-abc123"
+
+
+dataset:
+  name: gaia
+  hf_path: "gaia-benchmark/GAIA"
+  split: validation
+  data_dir: /dss/dssmcmlfs01/pn39qo/pn39qo-dss-0000/.cache/huggingface/hub/datasets--gaia-benchmark--GAIA/snapshots/897f2dfbb5c952b5c3c1509e648381f9c7b70316/2023/
+  level: 1 # format: 1 | 1-2 | 1-2-3
+
+text_inspector_max_limit: 100000
+
+browser_config:
+  viewport_size: 5120 # 1024 * 5
+  downloads_folder: downloads_folder
+  request_kwargs:
+    headers:
+      user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0"
+    timeout: 300
+  serpapi_key: SERPAPI_API_KEY
+
+search_agent:
+  max_steps: 20
+  verbosity_level: 2
+  planning_interval: 4
+  name: search_agent
+  description: search_agent_description
+  provide_run_summary: True
+
+manager_agent:
+  max_steps: 12
+  verbosity_level: 2
+  planning_interval: 4
+  name: manager_agent
+
