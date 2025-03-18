@@ -10,6 +10,9 @@ from typing import Callable, List
 
 import datasets
 import hydra
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig, OmegaConf
+
 import numpy as np
 import torch
 from cs_deep_research.helpers.reformulator import prepare_response
@@ -79,9 +82,10 @@ AUTHORIZED_IMPORTS = [
     "csv",
 ]
 
-
 @hydra.main(version_base=None, config_path="configs", config_name="config_strongreject")
 def main(cfg: DictConfig) -> None:
+    evaluate_mode = cfg.evaluate
+
     if cfg.seed:
         random.seed(cfg.seed)
         np.random.seed(cfg.seed)
@@ -92,13 +96,14 @@ def main(cfg: DictConfig) -> None:
         torch.use_deterministic_algorithms(True)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
     logger.info(f"Config:\n{OmegaConf.to_yaml(cfg)}")
     logger.info(f"Exp Dir: {HydraConfig.get().run.dir}")
 
     strongreject_dataset = get_strongreject_dataset(cfg)
-
     task_to_run = strongreject_dataset.to_list()
     logger.info(f"Total tasks to run: {len(task_to_run)}")
+
     records = []
     if cfg.concurrency.mode == "linear":
         for i, one_task in enumerate(task_to_run):
@@ -121,6 +126,47 @@ def main(cfg: DictConfig) -> None:
     else:
         raise NotImplementedError
 
+    logger.info("All tasks finished.")
+
+    if evaluate_mode: # if evaluate_mode == true -> evaluation process
+        evaluate(cfg)
+
+def evaluate(cfg: DictConfig): # TODO: evaluator by using hydra -> can not find built evaluator/evaluate func in hydra
+    run_dir = HydraConfig.get().run.dir
+    records_path = Path(run_dir) / "records.json"
+
+    if not records_path.exists():
+        logger.error(f"No records.json found in {records_path}, cannot evaluate.")
+        return
+
+    # analyse records.json
+    records = []
+    with open(records_path, "r") as f:
+        for line in f:
+            record_dict = json.loads(line.strip())
+            records.append(TaskRecord(**record_dict))
+
+    total = len(records)
+    parse_errors = sum(r.parsing_error for r in records)
+    iteration_exceeded = sum(r.iteration_limit_exceeded for r in records)
+    agent_errors = sum(1 for r in records if r.agent_error is not None)
+
+    logger.info(f"Evaluation: loaded {total} records.")
+    logger.info(f" - Parsing Errors: {parse_errors}")
+    logger.info(f" - Iteration Limit Exceeded: {iteration_exceeded}")
+    logger.info(f" - Agent Errors: {agent_errors}")
+
+    eval_results = {
+        "total_records": total,
+        "parse_errors": parse_errors,
+        "iteration_exceeded": iteration_exceeded,
+        "agent_errors": agent_errors
+    }
+
+    eval_path = Path(run_dir) / "evaluation_results.json"
+    with open(eval_path, "w") as f:
+        json.dump(eval_results, f, indent=2)
+    logger.info(f"Evaluation results saved to {eval_path}")
 
 @dataclass
 class TaskRecord:

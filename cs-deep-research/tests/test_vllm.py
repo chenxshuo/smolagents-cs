@@ -27,7 +27,8 @@ sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
 # llm = LLM(model="facebook/opt-125m")
 model = "Qwen/Qwen2.5-72B-Instruct"
 # model = "Qwen/QwQ-32B"
-llm = LLM(model=model, tensor_parallel_size=2)
+# llm = LLM(model=model, tensor_parallel_size=2)
+llm = LLM(model=model, tensor_parallel_size=1)
 
 # Generate texts from the prompts. The output is a list of RequestOutput objects
 # that contain the prompt, generated text, and other information.

@@ -22,6 +22,8 @@ debug:
   enable: False
   max_tasks: 2
 
+evaluate: true
+
 llm_model:
   model_id: Qwen/QwQ-32B
   model_name: QwQ-32B

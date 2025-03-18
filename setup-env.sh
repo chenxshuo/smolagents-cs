@@ -47,5 +47,5 @@ pip install vllm
 cd cs-deep-research
 pip install -e .
 
-pip install pre-commit
+pip install pre-commit hydra-core
 pre-commit install
