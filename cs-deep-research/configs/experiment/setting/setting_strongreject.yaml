@@ -1,9 +1,0 @@
-# Setting the parameters to be modified in the test
-
-#experiment:
-#  sweep:
-#    llm_model.model_id:
-#      - "Qwen/QwQ-32B"
-#    evaluate:
-#      - true
-#      - false

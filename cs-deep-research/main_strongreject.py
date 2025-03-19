@@ -10,8 +10,6 @@ from typing import Callable, List
 
 import datasets
 import hydra
-from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
 
 import numpy as np
 import torch
@@ -46,6 +44,15 @@ from smolagents import (
     OpenAIServerModel,
     ToolCallingAgent,
 )
+
+# evaluator
+from strong_reject.load_datasets import load_strongreject_small
+from strong_reject.jailbreaks import apply_jailbreaks_to_dataset, register_jailbreak
+from strong_reject.generate import generate_to_dataset
+from strong_reject.evaluate import evaluate_dataset
+
+# from dotenv import load_dotenv
+# load_dotenv("/dss/dssmcmlfs01/pn39qo/pn39qo-dss-0000/di93zun/deeper-harm-deep-research/smolagents-cs/.env")
 
 
 logger = logging.getLogger(__name__)
@@ -128,45 +135,72 @@ def main(cfg: DictConfig) -> None:
 
     logger.info("All tasks finished.")
 
+    # evaluator
     if evaluate_mode: # if evaluate_mode == true -> evaluation process
         evaluate(cfg)
 
-def evaluate(cfg: DictConfig): # TODO: evaluator by using hydra -> can not find built evaluator/evaluate func in hydra
-    run_dir = HydraConfig.get().run.dir
-    records_path = Path(run_dir) / "records.json"
+def evaluate(cfg: DictConfig):
+    """
+    evaluate based on strongreject evaluator
+    """
 
+    # open records.json as records
+    records_path = Path(HydraConfig.get().run.dir) / "records.json"
     if not records_path.exists():
-        logger.error(f"No records.json found in {records_path}, cannot evaluate.")
+        logger.error(f"Records file not found at {records_path}, skip evaluation.")
         return
 
-    # analyse records.json
-    records = []
-    with open(records_path, "r") as f:
-        for line in f:
-            record_dict = json.loads(line.strip())
-            records.append(TaskRecord(**record_dict))
+    with open(records_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
 
-    total = len(records)
-    parse_errors = sum(r.parsing_error for r in records)
-    iteration_exceeded = sum(r.iteration_limit_exceeded for r in records)
-    agent_errors = sum(1 for r in records if r.agent_error is not None)
+    records = [json.loads(line) for line in lines if line.strip()]
 
-    logger.info(f"Evaluation: loaded {total} records.")
-    logger.info(f" - Parsing Errors: {parse_errors}")
-    logger.info(f" - Iteration Limit Exceeded: {iteration_exceeded}")
-    logger.info(f" - Agent Errors: {agent_errors}")
+    # load strongreject dataset as ds
+    if cfg.dataset.choice == "small":
+        ds = load_strongreject_small()
+        logger.info("Loaded small strongreject dataset from strongreject library.")
+    else:
+        ds = load_strongreject_full()
+        logger.info("Loaded full strongreject dataset from strongreject library.")
 
-    eval_results = {
-        "total_records": total,
-        "parse_errors": parse_errors,
-        "iteration_exceeded": iteration_exceeded,
-        "agent_errors": agent_errors
-    }
+    # map question -> prediction
+    pred_map = {}
+    for rec in records:
+        question_str = rec["question"]  # rec["question"] in records is forbidden_prompt in the example
+        prediction_str = rec["prediction"]
+        pred_map[question_str] = prediction_str
 
-    eval_path = Path(run_dir) / "evaluation_results.json"
-    with open(eval_path, "w") as f:
-        json.dump(eval_results, f, indent=2)
-    logger.info(f"Evaluation results saved to {eval_path}")
+    # put col "response" in ds
+    def add_response(example):
+        return {
+            "response": pred_map.get(example["forbidden_prompt"], "")   # default: empty ""
+        }
+
+    ds_with_response = ds.map(add_response)
+
+    # evaluate by using strongreject.evaluate_dataset
+    # evaluators in config: - strongreject_rubric
+    #                       - strongreject_finetuned
+    for evaluator_name in cfg.dataset.evaluator:
+        logger.info(f"Evaluating with {evaluator_name} ...")
+
+        ds_eval = evaluate_dataset(
+            ds_with_response,
+            [evaluator_name],
+            skip_model_call=True    # from now: do not need models anymore -> save tokens
+        )
+
+        df_eval_pd = ds_eval.to_pandas()
+
+        # modify here, if need more/specific evaluation
+        logger.info(f"{evaluator_name} overall score stats:\n{df_eval_pd['score'].describe()}")
+
+        # save
+        out_path = Path(HydraConfig.get().run.dir) / f"eval_{evaluator_name}.csv"
+        df_eval_pd.to_csv(out_path, index=False)
+        logger.info(f"{evaluator_name} evaluation done. Results saved to {out_path}.")
+
+    logger.info("All evaluations finished.")
 
 @dataclass
 class TaskRecord:
@@ -301,6 +335,7 @@ def create_agent_hierarchy(
     browser_kwargs = OmegaConf.to_container(browser_config, resolve=True)
     browser_kwargs["request_kwargs"]["headers"] = {"User-Agent": browser_config.request_kwargs.headers.user_agent}
     browser_kwargs["serpapi_key"] = os.getenv(browser_kwargs["serpapi_key"])
+    # browser_kwargs["serpapi_key"] = os.getenv(browser_kwargs["SERPAPI_API_KEY"])
     browser = SimpleTextBrowser(**browser_kwargs)
 
     web_tools = [

@@ -153,3 +153,4 @@ archive/
 savedir/
 output/
 tool_output/
+setup-env.sh
