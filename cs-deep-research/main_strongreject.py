@@ -121,6 +121,8 @@ def main(cfg: DictConfig) -> None:
     else:
         raise NotImplementedError
 
+    # TODO Evaluate results @Zonggen
+
 
 @dataclass
 class TaskRecord:
