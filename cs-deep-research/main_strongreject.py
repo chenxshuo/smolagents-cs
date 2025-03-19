@@ -201,6 +201,8 @@ def evaluate(cfg: DictConfig):
         logger.info(f"{evaluator_name} evaluation done. Results saved to {out_path}.")
 
     logger.info("All evaluations finished.")
+    # TODO Evaluate results @Zonggen
+
 
 @dataclass
 class TaskRecord:
