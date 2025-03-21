@@ -22,8 +22,6 @@ debug:
   enable: False
   max_tasks: 2
 
-evaluate: true
-
 llm_model:
   model_id: Qwen/QwQ-32B
   model_name: QwQ-32B
@@ -39,8 +37,11 @@ dataset:
   small_dataset: ./datasets/strongreject/strongreject_small_dataset.csv
   full_dataset: ./datasets/strongreject/strongreject_dataset.csv
   evaluator:
-    - strongreject_rubric
-    - strongreject_finetuned
+    - strongreject_rubric_qwen
+#    - strongreject_rubric # openAI
+#    - strongreject_finetuned # HF FT model
+
+evaluate: false
 
 text_inspector_max_limit: 100000
 

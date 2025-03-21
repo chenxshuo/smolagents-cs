@@ -154,3 +154,5 @@ savedir/
 output/
 tool_output/
 setup-env.sh
+cs-deep-research/server.log
+.env
