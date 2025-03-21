@@ -37,11 +37,11 @@ dataset:
   small_dataset: ./datasets/strongreject/strongreject_small_dataset.csv
   full_dataset: ./datasets/strongreject/strongreject_dataset.csv
   evaluator:
-    - strongreject_rubric_qwen
+    - strongreject_rubric_vllm
 #    - strongreject_rubric # openAI
 #    - strongreject_finetuned # HF FT model
 
-evaluate: false
+evaluate: true
 
 text_inspector_max_limit: 100000
 
