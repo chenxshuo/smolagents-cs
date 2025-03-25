@@ -156,3 +156,5 @@ tool_output/
 setup-env.sh
 cs-deep-research/server.log
 .env
+setup-env.sh
+cs-deep-research/debug_evaluate.py
