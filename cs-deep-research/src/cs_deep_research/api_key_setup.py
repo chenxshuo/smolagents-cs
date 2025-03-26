@@ -8,10 +8,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from langfuse import Langfuse
+import certifi
 
 logger = logging.getLogger(__name__)
 
@@ -45,18 +47,29 @@ else:
 
     # Configure OpenTelemetry endpoint and authentication
     os.environ["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
-    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://cloud.langfuse.com/api/public/otel"
+    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://cloud.langfuse.com/api/public/otel/v1/traces"
     os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
-        f"Authorization=Basic {LANGFUSE_AUTH},"
+        f"Authorization=Bearer {LANGFUSE_SECRET_KEY},"
         "Content-Type=application/x-protobuf"
     )
 
     # Set up TracerProvider and SpanProcessor
-    trace_provider = TracerProvider()
-    trace_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(TracerProvider())
+
+    # Configure OTLP exporter
+    otlp_exporter = OTLPSpanExporter(
+        endpoint="https://cloud.langfuse.com/api/public/otel/v1/traces",
+        headers={
+            "Authorization": f"Bearer {LANGFUSE_SECRET_KEY}",
+            "X-Api-Key": LANGFUSE_PUBLIC_KEY,
+        }
+    )
+
+    # Add BatchSpanProcessor
+    trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
 
     # Initialize SmolagentsInstrumentor
-    SmolagentsInstrumentor().instrument(tracer_provider=trace_provider)
+    SmolagentsInstrumentor().instrument(tracer_provider=trace.get_tracer_provider())
     logger.info("OpenTelemetry instrumentation enabled successfully.")
 
 # Set up other environment variables
@@ -64,3 +77,28 @@ logger.info("Set up env variables from .env file.")
 
 # Export langfuse instance for use in other modules
 __all__ = ["langfuse"]
+
+def setup_opentelemetry():
+    """Set up OpenTelemetry for tracing."""
+    try:
+        # Set up TracerProvider
+        trace.set_tracer_provider(TracerProvider())
+
+        # Configure OTLP exporter
+        otlp_exporter = OTLPSpanExporter(
+            endpoint="https://cloud.langfuse.com/api/public/otel/v1/traces",
+            headers={
+                "Authorization": f"Bearer {LANGFUSE_SECRET_KEY}",
+                "X-Api-Key": LANGFUSE_PUBLIC_KEY,
+            }
+        )
+
+        # Add BatchSpanProcessor
+        trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
+
+        # Initialize SmolagentsInstrumentor
+        SmolagentsInstrumentor().instrument(tracer_provider=trace.get_tracer_provider())
+        logger.info("OpenTelemetry instrumentation enabled successfully.")
+    except Exception as e:
+        logger.warning(f"Failed to set up OpenTelemetry: {str(e)}")
+        logger.warning("Continuing without OpenTelemetry instrumentation.")

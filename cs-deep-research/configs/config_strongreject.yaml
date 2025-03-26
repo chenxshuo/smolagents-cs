@@ -43,6 +43,8 @@ dataset:
 
 evaluate: true
 
+report: true
+
 text_inspector_max_limit: 100000
 
 browser_config:

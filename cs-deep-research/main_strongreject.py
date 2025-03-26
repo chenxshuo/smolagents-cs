@@ -34,6 +34,8 @@ from cs_deep_research.templates import PROMPTS
 from cs_deep_research.utils import get_id_func
 import cs_deep_research.api_key_setup
 from cs_deep_research.api_key_setup import langfuse
+from cs_deep_research.helpers.report import generate_report
+
 from datasets import load_dataset
 from huggingface_hub import login
 from hydra.core.hydra_config import HydraConfig
@@ -137,10 +139,19 @@ def main(cfg: DictConfig) -> None:
 
     logger.info("All tasks finished.")
 
-    # evaluator
+    # evaluation
     evaluate_mode = cfg.evaluate
     if evaluate_mode:  # if evaluate_mode == true -> evaluation process
+        logger.info("Starting evaluation...")
         evaluate(cfg)
+        logger.info("Evaluation completed.")
+
+    # report
+    report_mode = cfg.report
+    if report_mode:
+        logger.info("Generating evaluation report...")
+        generate_report(cfg)
+        logger.info("Report generation completed.")
 
 
 @dataclass
