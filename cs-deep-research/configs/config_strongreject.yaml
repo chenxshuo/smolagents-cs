@@ -33,9 +33,10 @@ llm_model:
 
 dataset:
   name: strongreject
-  choice: small
+  choice: test # small
   small_dataset: ./datasets/strongreject/strongreject_small_dataset.csv
   full_dataset: ./datasets/strongreject/strongreject_dataset.csv
+  test_dataset: ./datasets/strongreject/strongreject_test.csv
   evaluator:
     - strongreject_rubric_vllm
 #    - strongreject_rubric # openAI

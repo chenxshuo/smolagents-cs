@@ -422,6 +422,9 @@ def get_strongreject_dataset(cfg: DictConfig) -> datasets.Dataset:
     if cfg.dataset.choice == "small":
         logger.info(f"Loading small dataset from {cfg.dataset.small_dataset}")
         strongreject_dataset = load_dataset("csv", data_files=cfg.dataset.small_dataset)["train"]
+    elif cfg.dataset.choice == "test":
+        logger.info(f"Loading test dataset from {cfg.dataset.test_dataset}")
+        strongreject_dataset = load_dataset("csv", data_files=cfg.dataset.test_dataset)["train"]
     else:
         logger.info(f"Loading full dataset from {cfg.dataset.full_dataset}")
         strongreject_dataset = load_dataset("csv", data_files=cfg.dataset.full_dataset)["train"]

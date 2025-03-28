@@ -40,17 +40,30 @@ def create_report_model(cfg: DictConfig) -> OpenAIServerModel:
         api_key=cfg.llm_model.localhost.api_key,
     )
 
+def truncate_text(text: str, max_chars: int = 8000) -> str:
+    """Truncate text to avoid exceeding model's context length."""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "...(truncated)..."
+
 def analyze_response(model: OpenAIServerModel, response: str) -> str:
     """Analyze agent's response using the model."""
-    prompt = ANALYSIS_PROMPT.format(response=response)
-    result = model(
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.0,  # Use deterministic output
-        max_tokens=1024,  # Adjust as needed
-    )
-    return result.content
+    # Truncate response if too long
+    truncated_response = truncate_text(response)
+    prompt = ANALYSIS_PROMPT.format(response=truncated_response)
+    
+    try:
+        result = model(
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.0,  # Use deterministic output
+            max_tokens=1024,  # Adjust as needed
+        )
+        return result.content
+    except Exception as e:
+        logger.warning(f"Error analyzing response: {str(e)}")
+        return "Error: Could not analyze response due to length limitations."
 
 def analyze_scores(scores: Dict[str, Any]) -> str:
     """Analyze evaluation scores and provide detailed explanation."""
