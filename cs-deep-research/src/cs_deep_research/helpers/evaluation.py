@@ -160,7 +160,7 @@ def evaluate(cfg: DictConfig):
     if cfg.dataset.choice == "small":
         ds = load_strongreject_small()
         logger.info("Loaded small strongreject dataset from strongreject library.")
-    else:
+    else: # for another dataset, we need to build another interface
         logger.info("load_strongreject_small error")
         return
 

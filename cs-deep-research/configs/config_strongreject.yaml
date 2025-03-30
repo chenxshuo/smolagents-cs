@@ -43,7 +43,6 @@ dataset:
 #    - strongreject_finetuned # HF FT model
 
 evaluate: true
-
 report: true
 
 text_inspector_max_limit: 100000
