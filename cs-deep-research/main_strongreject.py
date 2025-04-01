@@ -47,7 +47,15 @@ from smolagents import (
     Model,
     OpenAIServerModel,
     ToolCallingAgent,
+    DuckDuckGoSearchTool
 )
+
+# Import OpenTelemetry related modules
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from openinference.instrumentation.smolagents import SmolagentsInstrumentor
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +94,34 @@ AUTHORIZED_IMPORTS = [
 
 @hydra.main(version_base=None, config_path="configs", config_name="config_strongreject")
 def main(cfg: DictConfig) -> None:
+    # Configure Langfuse OpenTelemetry
+    if langfuse:
+        import base64
+        LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
+        LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
+        if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
+            LANGFUSE_AUTH = base64.b64encode(f"{LANGFUSE_PUBLIC_KEY}:{LANGFUSE_SECRET_KEY}".encode()).decode()
+            os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://cloud.langfuse.com/api/public/otel"
+            os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {LANGFUSE_AUTH}"
+            
+            # Set up TracerProvider
+            trace_provider = TracerProvider()
+            otlp_exporter = OTLPSpanExporter()
+            span_processor = BatchSpanProcessor(otlp_exporter)
+            trace_provider.add_span_processor(span_processor)
+            trace.set_tracer_provider(trace_provider)
+            
+            # Initialize SmolagentsInstrumentor
+            SmolagentsInstrumentor().instrument(tracer_provider=trace_provider)
+        else:
+            # If Langfuse keys are not configured, disable OpenTelemetry
+            os.environ["OTEL_SDK_DISABLED"] = "true"
+            logger.info("Langfuse keys not found, OpenTelemetry is disabled")
+    else:
+        # If Langfuse is not enabled, disable OpenTelemetry
+        os.environ["OTEL_SDK_DISABLED"] = "true"
+        logger.info("Langfuse is not enabled, OpenTelemetry is disabled")
+
     if cfg.seed:
         random.seed(cfg.seed)
         np.random.seed(cfg.seed)
@@ -380,8 +416,14 @@ def create_agent_hierarchy(
     browser_kwargs["serpapi_key"] = os.getenv(browser_kwargs["serpapi_key"])
     browser = SimpleTextBrowser(**browser_kwargs)
 
+    # Create DuckDuckGo search tool with a unique name
+    duckduckgo_tool = DuckDuckGoSearchTool()
+    duckduckgo_tool.name = "duckduckgo_search"  # Give it a unique name
+
+    # Add tools to web_tools with unique names
     web_tools = [
-        SearchInformationTool(browser),
+        duckduckgo_tool,  # DuckDuckGo search with unique name
+        SearchInformationTool(browser),  # This keeps its original name 'web_search'
         VisitTool(browser),
         PageUpTool(browser),
         PageDownTool(browser),
@@ -401,7 +443,7 @@ def create_agent_hierarchy(
         description=PROMPTS[search_agent_config.description],
         provide_run_summary=search_agent_config.provide_run_summary,
     )
-    search_agent.prompt_templates["managed_agent"]["task"] += """You can navigate to .txt online files.
+    search_agent.prompt_templates["managed_agent"]["task"] += """You can use both DuckDuckGo search (duckduckgo_search) and web search (web_search) to find information. You can also navigate to .txt online files.
         If a non-html page is in another format, especially .pdf or a Youtube video, use tool 'inspect_file_as_text' to inspect it.
         Additionally, if after some searching you find out that you need more information to answer the question, you can use `final_answer` with your request for clarification as argument to request for more information."""
 
