@@ -51,12 +51,24 @@ pre-commit install
 pip install git+https://github.com/dsbowen/strong_reject.git@main # usage: import strong_reject
 
 # Hydra
-pip install hydra-core
+pip install hydra-core colorlog almost_unique_id
 
-# needed in run.sh
-pip install almost_unique_id
-pip install colorlog
 
 # langfuse
 pip install langfuse
 pip install 'smolagents[telemetry]'
+
+
+### Try use uv 
+uv venv venv-smolagents-deep-research --prompt smolagents-deep-research
+source venv-smolagents-deep-research/bin/activate
+uv pip install -e '.[dev]'
+uv pip install -r examples/open_deep_research/requirements.txt
+uv pip install opentelemetry-sdk opentelemetry-exporter-otlp openinference-instrumentation-smolagents
+uv pip install vllm
+cd cs-deep-research
+uv pip install -e .
+uv pip install pre-commit hydra-core colorlog almost_unique_id setuptools
+uv pip install git+https://github.com/dsbowen/strong_reject.git@main # usage: import strong_reject
+uv pip install langfuse
+
