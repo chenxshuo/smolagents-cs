@@ -2,6 +2,10 @@
 
 ## CodeAgent 
 
+ReAct Agent. 
+- but write actions in code snippets. 
+
+
 ### build system prompt based on default template + specific variables
 
 ```python
@@ -49,3 +53,4 @@ system_prompt = populate_template(
 3. parse model output to get code action 
 4. call tools 
 
+## GAIA Example Agent 

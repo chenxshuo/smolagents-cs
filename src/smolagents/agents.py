@@ -1219,9 +1219,6 @@ class CodeAgent(MultiStepAgent):
         memory_step.model_input_messages = memory_messages.copy()
         try:
             additional_args = {"grammar": self.grammar} if self.grammar is not None else {}
-            import ipdb
-
-            ipdb.set_trace()
             chat_message: ChatMessage = self.model(
                 self.input_messages,
                 stop_sequences=["<end_code>", "Observation:"],
