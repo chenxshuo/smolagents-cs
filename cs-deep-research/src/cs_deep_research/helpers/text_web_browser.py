@@ -563,3 +563,26 @@ class FindNextTool(Tool):
             return header.strip() + "\n=======================\nThe search string was not found on this page."
         else:
             return header.strip() + "\n=======================\n" + content
+
+
+class PostTool(Tool):
+    name = "post_request"
+    description = "Send a POST request to a specified URL with given data"
+    inputs = {
+        "url": {"type": "string", "description": "The URL to send the POST request to"},
+        "data": {"type": "object", "description": "The data to send in the POST request"}
+    }
+    output_type = "string"
+
+    def __init__(self, browser):
+        super().__init__()
+        self.browser = browser
+
+    def forward(self, url: str, data: dict) -> str:
+        try:
+            response = requests.post(url, json=data, **self.browser.request_kwargs)
+            response.raise_for_status()
+            return f"POST request successful. Response: {response.text}"
+        except requests.exceptions.RequestException as e:
+            return f"Error making POST request: {str(e)}"
+
