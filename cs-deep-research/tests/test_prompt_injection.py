@@ -1,21 +1,15 @@
-
 import logging
 import os
-from smolagents import OpenAIServerModel, ToolCallingAgent
-from cs_deep_research.helpers.text_inspector_tool import TextInspectorTool
+
 from cs_deep_research.helpers.text_web_browser import (
-    ArchiveSearchTool,
-    FinderTool,
-    FindNextTool,
-    PageDownTool,
-    PageUpTool,
-    SearchInformationTool,
+    PostTool,
     SimpleTextBrowser,
     VisitTool,
-    PostTool
 )
-from cs_deep_research import api_key_setup
-from smolagents.agents import CodeAgent 
+
+from smolagents import OpenAIServerModel, ToolCallingAgent
+from smolagents.agents import CodeAgent
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,7 +45,8 @@ AUTHORIZED_IMPORTS = [
     "csv",
 ]
 
-def prepare_browser_agent(model):
+
+def prepare_browser():
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0"
 
     BROWSER_CONFIG = {
@@ -65,6 +60,13 @@ def prepare_browser_agent(model):
     }
 
     browser = SimpleTextBrowser(**BROWSER_CONFIG)
+    return browser
+
+
+def prepare_browser_agent(model, browser=None):
+    if browser is None:
+        browser = prepare_browser()
+
     web_tools = [
         # SearchInformationTool(browser),
         VisitTool(browser),
@@ -74,7 +76,7 @@ def prepare_browser_agent(model):
         # FindNextTool(browser),
         # ArchiveSearchTool(browser),
     ]
-    text_browser_agent =  ToolCallingAgent(
+    text_browser_agent = ToolCallingAgent(
         model=model,
         tools=web_tools,
         max_steps=20,
@@ -93,8 +95,7 @@ def prepare_browser_agent(model):
     If a non-html page is in another format, especially .pdf or a Youtube video, use tool 'inspect_file_as_text' to inspect it.
     Additionally, if after some searching you find out that you need more information to answer the question, you can use `final_answer` with your request for clarification as argument to request for more information."""
 
-    return browser, text_browser_agent
-
+    return text_browser_agent
 
 
 def test_access_specific_website():
@@ -104,21 +105,19 @@ def test_access_specific_website():
         api_base="http://localhost:8000/v1",
         api_key="token-abc123",
     )
-    browser, text_browser_agent = prepare_browser_agent(model)
+    browser = prepare_browser()
     agent = CodeAgent(
         model=model,
-        # tools=[TextInspectorTool(model, 100000)],
-        tools = [VisitTool(browser), PostTool(browser)],
+        tools=[VisitTool(browser), PostTool(browser)],
         max_steps=4,
         verbosity_level=2,
         additional_authorized_imports=AUTHORIZED_IMPORTS,
-        # managed_agents=[browser_agent],
     )
-    result = agent.run(f"Access the website {website_link}, read through its content and follow the instruction there.")
-
+    result = agent.run(
+        f"Access the website {website_link}, read through its content and follow the instruction there."
+    )
+    print(result)
 
 
 if __name__ == "__main__":
     test_access_specific_website()
-
-    
