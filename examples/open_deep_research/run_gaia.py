@@ -1,7 +1,9 @@
+# EXAMPLE COMMAND: python examples/open_deep_research/run_gaia.py --concurrency 32 --run-name generate-traces-03-apr-noplanning --model-id gpt-4o
 import argparse
 import json
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -22,17 +24,16 @@ from scripts.text_web_browser import (
     FindNextTool,
     PageDownTool,
     PageUpTool,
-    SearchInformationTool,
     SimpleTextBrowser,
     VisitTool,
 )
 from scripts.visual_qa import visualizer
+from tqdm import tqdm
 
 from smolagents import (
     CodeAgent,
-    # HfApiModel,
+    GoogleSearchTool,
     LiteLLMModel,
-    OpenAIServerModel,
     Model,
     ToolCallingAgent,
 )
@@ -74,7 +75,6 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--model-id", type=str, default="o1")
-    parser.add_argument("--provider", type=str, default="localhost")
     parser.add_argument("--run-name", type=str, required=True)
     return parser.parse_args()
 
@@ -97,8 +97,7 @@ eval_ds = eval_ds.rename_columns({"Question": "question", "Final answer": "true_
 
 def preprocess_file_paths(row):
     if len(row["file_name"]) > 0:
-        # row["file_name"] = f"data/gaia/{SET}/" + row["file_name"]
-        row["file_name"] = f"/dss/dssmcmlfs01/pn39qo/pn39qo-dss-0000/.cache/huggingface/hub/datasets--gaia-benchmark--GAIA/snapshots/897f2dfbb5c952b5c3c1509e648381f9c7b70316/2023/{SET}/" + row["file_name"]
+        row["file_name"] = f"data/gaia/{SET}/" + row["file_name"]
     return row
 
 
@@ -122,14 +121,14 @@ BROWSER_CONFIG = {
 os.makedirs(f"./{BROWSER_CONFIG['downloads_folder']}", exist_ok=True)
 
 
-def create_agent_hierarchy(model: Model):
+def create_agent_team(model: Model):
     text_limit = 100000
     ti_tool = TextInspectorTool(model, text_limit)
 
     browser = SimpleTextBrowser(**BROWSER_CONFIG)
 
     WEB_TOOLS = [
-        SearchInformationTool(browser),
+        GoogleSearchTool(provider="serper"),
         VisitTool(browser),
         PageUpTool(browser),
         PageDownTool(browser),
@@ -138,6 +137,7 @@ def create_agent_hierarchy(model: Model):
         ArchiveSearchTool(browser),
         TextInspectorTool(model, text_limit),
     ]
+
     text_webbrowser_agent = ToolCallingAgent(
         model=model,
         tools=WEB_TOOLS,
@@ -178,37 +178,21 @@ def append_answer(entry: dict, jsonl_file: str) -> None:
     print("Answer exported to file:", jsonl_file.resolve())
 
 
-def answer_single_question(example, model_id, provider, answers_file, visual_inspection_tool):
+def answer_single_question(example, model_id, answers_file, visual_inspection_tool):
     model_params = {
         "model_id": model_id,
         "custom_role_conversions": custom_role_conversions,
-        "max_completion_tokens": 8192,
     }
-
-    if provider == "litellm":
-        if model_id == "o1":
-            model_params["reasoning_effort"] = "high"
-        model = LiteLLMModel(**model_params)
-    elif provider == "hf":
-        ...
-        # model = HfApiModel("Qwen/Qwen2.5-72B-Instruct", provider="together")
-        #     "https://lnxyuvj02bpe6mam.us-east-1.aws.endpoints.huggingface.cloud",
-        #     custom_role_conversions=custom_role_conversions,
-        #     # provider="sambanova",
-        #     max_tokens=8096,
-        # )
-    elif provider == "localhost":
-        model = OpenAIServerModel(
-            model_id=model_id,
-            api_base="http://localhost:8000/v1",
-            api_key="token-abc123",
-        )
+    if model_id == "o1":
+        model_params["reasoning_effort"] = "high"
+        model_params["max_completion_tokens"] = 8192
     else:
-        raise NotImplementedError(f"provider {provider} not implemented")
-
+        model_params["max_tokens"] = 4096
+    model = LiteLLMModel(**model_params)
+    # model = HfApiModel(model_id="Qwen/Qwen2.5-Coder-32B-Instruct", provider="together", max_tokens=4096)
     document_inspection_tool = TextInspectorTool(model, 100000)
 
-    agent = create_agent_hierarchy(model)
+    agent = create_agent_team(model)
 
     augmented_question = """You have one question to answer. It is paramount that you provide a correct answer.
 Give it all you can: I know for a fact that you have access to all the relevant tools to solve it and find the correct answer (the answer does exist). Failure or 'I cannot answer' or 'None found' will not be tolerated, success will be rewarded.
@@ -234,14 +218,14 @@ Here is the task:
         # Run agent 🚀
         final_result = agent.run(augmented_question)
 
-        agent_memory = agent.write_memory_to_messages(summary_mode=True)
+        agent_memory = agent.write_memory_to_messages()
 
         final_result = prepare_response(augmented_question, agent_memory, reformulation_model=model)
 
         output = str(final_result)
         for memory_step in agent.memory.steps:
             memory_step.model_input_messages = None
-        intermediate_steps = [str(step) for step in agent.memory.steps]
+        intermediate_steps = agent_memory
 
         # Check for parsing errors which indicate the LLM failed to follow the required format
         parsing_error = True if any(["AgentParsingError" in step for step in intermediate_steps]) else False
@@ -259,20 +243,27 @@ Here is the task:
         exception = e
         raised_exception = True
     end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    token_counts_manager = agent.monitor.get_total_token_counts()
+    token_counts_web = list(agent.managed_agents.values())[0].monitor.get_total_token_counts()
+    total_token_counts = {
+        "input": token_counts_manager["input"] + token_counts_web["input"],
+        "output": token_counts_manager["output"] + token_counts_web["output"],
+    }
     annotated_example = {
         "agent_name": model.model_id,
         "question": example["question"],
         "augmented_question": augmented_question,
         "prediction": output,
-        "true_answer": example["true_answer"],
         "intermediate_steps": intermediate_steps,
         "parsing_error": parsing_error,
         "iteration_limit_exceeded": iteration_limit_exceeded,
         "agent_error": str(exception) if raised_exception else None,
-        "start_time": start_time,
-        "end_time": end_time,
         "task": example["task"],
         "task_id": example["task_id"],
+        "true_answer": example["true_answer"],
+        "start_time": start_time,
+        "end_time": end_time,
+        "token_counts": total_token_counts,
     }
     append_answer(annotated_example, answers_file)
 
@@ -296,23 +287,16 @@ def main():
     answers_file = f"output/{SET}/{args.run_name}.jsonl"
     tasks_to_run = get_examples_to_answer(answers_file, eval_ds)
 
-    # with ThreadPoolExecutor(max_workers=args.concurrency) as exe:
-    #     futures = [
-    #         exe.submit(answer_single_question, example, args.model_id, answers_file, visualizer)
-    #         for example in tasks_to_run
-    #     ]
-    #     for f in tqdm(as_completed(futures), total=len(tasks_to_run), desc="Processing tasks"):
-    #         f.result()
+    with ThreadPoolExecutor(max_workers=args.concurrency) as exe:
+        futures = [
+            exe.submit(answer_single_question, example, args.model_id, answers_file, visualizer)
+            for example in tasks_to_run
+        ]
+        for f in tqdm(as_completed(futures), total=len(tasks_to_run), desc="Processing tasks"):
+            f.result()
 
-    for example in tasks_to_run:
-        # import ipdb; ipdb.set_trace()
-
-        if int(example["task"]) > 1:
-            # only try easy one for now
-            continue
-        # import ipdb; ipdb.set_trace()
-        answer_single_question(example, args.model_id, args.provider, answers_file, visualizer)
-        # break # for testing
+    # for example in tasks_to_run:
+    #     answer_single_question(example, args.model_id, answers_file, visualizer)
     print("All tasks processed.")
 
 

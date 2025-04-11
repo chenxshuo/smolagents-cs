@@ -24,12 +24,13 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Any, Dict, List, Tuple
 
+import PIL.Image
 import requests
-from PIL import Image
 
 from .local_python_executor import PythonExecutor
 from .monitoring import LogLevel
 from .tools import Tool, get_tools_definition_code
+from .utils import AgentError
 
 
 try:
@@ -86,12 +87,22 @@ locals().update(vars_dict)
 
     def install_packages(self, additional_imports: List[str]):
         additional_imports = additional_imports + ["smolagents"]
-        self.run_code_raise_errors(f"!pip install {' '.join(additional_imports)}")
+        _, execution_logs = self.run_code_raise_errors(f"!pip install {' '.join(additional_imports)}")
+        self.logger.log(execution_logs)
         return additional_imports
 
 
 class E2BExecutor(RemotePythonExecutor):
-    def __init__(self, additional_imports: List[str], logger):
+    """
+    Executes Python code using E2B.
+
+    Args:
+        additional_imports (`list[str]`): Additional imports to install.
+        logger (`Logger`): Logger to use.
+        **kwargs: Additional arguments to pass to the E2B Sandbox.
+    """
+
+    def __init__(self, additional_imports: List[str], logger, **kwargs):
         super().__init__(additional_imports, logger)
         try:
             from e2b_code_interpreter import Sandbox
@@ -99,7 +110,7 @@ class E2BExecutor(RemotePythonExecutor):
             raise ModuleNotFoundError(
                 """Please install 'e2b' extra to use E2BExecutor: `pip install 'smolagents[e2b]'`"""
             )
-        self.sandbox = Sandbox()
+        self.sandbox = Sandbox(**kwargs)
         self.installed_packages = self.install_packages(additional_imports)
         self.logger.log("E2B is running", level=LogLevel.INFO)
 
@@ -111,11 +122,10 @@ class E2BExecutor(RemotePythonExecutor):
             execution_logs = "\n".join([str(log) for log in execution.logs.stdout])
             logs = execution_logs
             logs += "Executing code yielded an error:"
-            logs += execution.error.name
+            logs += execution.error.name + "\n"
             logs += execution.error.value
             logs += execution.error.traceback
-            raise ValueError(logs)
-        self.logger.log(execution.logs)
+            raise AgentError(logs, self.logger)
         execution_logs = "\n".join([str(log) for log in execution.logs.stdout])
         if not execution.results:
             return None, execution_logs
@@ -126,7 +136,7 @@ class E2BExecutor(RemotePythonExecutor):
                         if getattr(result, attribute_name) is not None:
                             image_output = getattr(result, attribute_name)
                             decoded_bytes = base64.b64decode(image_output.encode("utf-8"))
-                            return Image.open(BytesIO(decoded_bytes)), execution_logs
+                            return PIL.Image.open(BytesIO(decoded_bytes)), execution_logs
                     for attribute_name in [
                         "chart",
                         "data",
@@ -142,7 +152,7 @@ class E2BExecutor(RemotePythonExecutor):
                         if getattr(result, attribute_name) is not None:
                             return getattr(result, attribute_name), execution_logs
             if return_final_answer:
-                raise ValueError("No main result returned by executor!")
+                raise AgentError("No main result returned by executor!", self.logger)
             return None, execution_logs
 
 
@@ -184,14 +194,16 @@ class DockerExecutor(RemotePythonExecutor):
             dockerfile_path = Path(__file__).parent / "Dockerfile"
             if not dockerfile_path.exists():
                 with open(dockerfile_path, "w") as f:
-                    f.write("""FROM python:3.12-slim
+                    f.write(
+                        """FROM python:3.12-slim
 
 RUN pip install jupyter_kernel_gateway requests numpy pandas
 RUN pip install jupyter_client notebook
 
 EXPOSE 8888
 CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip='0.0.0.0'", "--KernelGatewayApp.port=8888", "--KernelGatewayApp.allow_origin='*'"]
-""")
+"""
+                    )
             _, build_logs = self.client.images.build(
                 path=str(dockerfile_path.parent), dockerfile=str(dockerfile_path), tag="jupyter-kernel"
             )
@@ -250,11 +262,13 @@ CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip='0.0.0.0'", "--KernelGat
                 if match:
                     pre_final_answer_code = self.final_answer_pattern.sub("", code_action)
                     result_expr = match.group(1)
-                    wrapped_code = pre_final_answer_code + dedent(f"""
+                    wrapped_code = pre_final_answer_code + dedent(
+                        f"""
                         import pickle, base64
                         _result = {result_expr}
                         print("RESULT_PICKLE:" + base64.b64encode(pickle.dumps(_result)).decode())
-                        """)
+                        """
+                    )
             else:
                 wrapped_code = code_action
 
@@ -285,7 +299,7 @@ CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip='0.0.0.0'", "--KernelGat
                         outputs.append(text)
                 elif msg_type == "error":
                     traceback = msg["content"].get("traceback", [])
-                    raise RuntimeError("\n".join(traceback)) from None
+                    raise AgentError("\n".join(traceback), self.logger)
                 elif msg_type == "status" and msg["content"]["execution_state"] == "idle":
                     if not return_final_answer or waiting_for_idle:
                         break
